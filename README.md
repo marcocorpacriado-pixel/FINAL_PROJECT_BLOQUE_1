@@ -161,6 +161,8 @@
   Esto garantiza que todas las métricas y simulaciones se basen en el periodo común real.
 
 🧮 Métodos Monte Carlo
+
+
   Método | Descripción | Ventajas
   gbm	| Movimiento Browniano Geométrico con μ, σ históricos | Sencillo y base teórica.
   cholesky | Multivariante, preserva correlaciones lineales | Captura co-movimientos.
