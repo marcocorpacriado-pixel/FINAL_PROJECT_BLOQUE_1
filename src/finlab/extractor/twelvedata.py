@@ -1,16 +1,21 @@
+# src/finlab/extractor/twelvedata.py
 from pathlib import Path
 import os, time, requests, pandas as pd
+from .io_utils import save_timeseries
 
 def fetch_prices_twelvedata(
     symbol: str,
     outdir: Path,
     interval: str = "1day",
     start: str | None = None,
-    end: str | None = None
+    end: str | None = None,
+    *,
+    fmt: str = "csv",  # <--- NUEVO: 'csv' | 'parquet'
 ) -> Path:
     """
     Descarga datos desde la API gratuita de TwelveData.
     Compatible con bolsa, forex y criptos.
+    Permite guardar en CSV o Parquet (fmt).
     """
     api_key = os.getenv("TWELVEDATA_API_KEY")
     if not api_key:
@@ -40,20 +45,28 @@ def fetch_prices_twelvedata(
     df = df.sort_values("datetime")
     df = df.rename(columns=str.lower)
 
-      # --- Crear carpeta base ---
-    outdir.mkdir(parents=True, exist_ok=True)
-
-    # Normaliza el símbolo (evita caracteres problemáticos como "/")
+    # Normaliza el símbolo para carpetas/archivos
     safe_symbol = symbol.replace("/", "_").replace("\\", "_")
-
-    # Crea la subcarpeta específica del símbolo
     symbol_dir = outdir / safe_symbol
     symbol_dir.mkdir(parents=True, exist_ok=True)
 
-    # Guarda el CSV dentro de esa subcarpeta
-    out = symbol_dir / f"{safe_symbol}_{interval}.csv"
-    df.to_csv(out, index=False)
+    # Asegura esquema estándar básico (date, open, high, low, close, volume)
+    df_std = df.rename(columns={
+        "datetime": "date",
+        "open": "open",
+        "high": "high",
+        "low": "low",
+        "close": "close",
+        "volume": "volume",
+    })
+    # Ordena columnas si existen
+    cols = [c for c in ["date", "open", "high", "low", "close", "volume"] if c in df_std.columns]
+    df_std = df_std[cols]
+
+    # Guarda usando el utilitario (CSV o Parquet)
+    out_path = save_timeseries(df_std, symbol_dir, base_name=f"{safe_symbol}_{interval}", fmt=fmt)
 
     time.sleep(1.2)
-    return out
+    return out_path
+
 

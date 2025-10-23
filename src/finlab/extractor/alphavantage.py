@@ -1,5 +1,30 @@
 from pathlib import Path
 import os, time, requests, pandas as pd
+from .io_utils import save_timeseries
+
+_PREMIUM_HINTS = (
+    "premium endpoint",
+    "premium plan",
+)
+
+def _is_premium_message(data: dict) -> bool:
+    if not isinstance(data, dict):
+        return False
+    msg = (data.get("Information") or data.get("Note") or data.get("Error Message") or "") .lower()
+    return any(h in msg for h in _PREMIUM_HINTS)
+
+def _fetch_raw(symbol: str, function: str, outputsize: str, api_key: str) -> dict:
+    url = "https://www.alphavantage.co/query"
+    params = {
+        "function": function,
+        "symbol": symbol,
+        "apikey": api_key,
+        "outputsize": outputsize,
+        "datatype": "json",
+    }
+    r = requests.get(url, params=params, timeout=30)
+    r.raise_for_status()
+    return r.json()
 
 def fetch_prices_alphavantage(
     symbol: str,
@@ -7,64 +32,84 @@ def fetch_prices_alphavantage(
     start: str | None = None,
     end: str | None = None,
     *,
-    adjusted: bool = False,     # usar DAILY (free) por defecto
-    outputsize: str = "compact" # "compact" (≈100 últimos) es lo más seguro en free
+    adjusted: bool = False,      # si da premium, haremos fallback automático
+    outputsize: str = "compact", # "compact" más seguro en free
+    fmt: str = "csv",
 ) -> Path:
     """
-    Descarga precios diarios desde Alpha Vantage en modo compatible con el plan gratuito.
-    - adjusted=False usa TIME_SERIES_DAILY (free).
-    - outputsize="compact" evita respuestas premium/rate limit.
+    Descarga precios diarios desde Alpha Vantage.
+    Si 'adjusted=True' y el endpoint es premium, hace fallback a DAILY normal.
     """
     api_key = os.getenv("ALPHAVANTAGE_API_KEY")
     if not api_key:
         raise RuntimeError("❌ Falta ALPHAVANTAGE_API_KEY en .env")
 
-    function = "TIME_SERIES_DAILY_ADJUSTED" if adjusted else "TIME_SERIES_DAILY"
+    # 1) Intenta adjusted si lo pidió el usuario
+    data = {}
+    used_function = None
+    if adjusted:
+        used_function = "TIME_SERIES_DAILY_ADJUSTED"
+        data = _fetch_raw(symbol, used_function, outputsize, api_key)
+        if _is_premium_message(data):
+            # fallback automático a DAILY
+            used_function = "TIME_SERIES_DAILY"
+            data = _fetch_raw(symbol, used_function, outputsize, api_key)
 
-    url = "https://www.alphavantage.co/query"
-    params = {
-        "function": function,
-        "symbol": symbol,
-        "apikey": api_key,
-        "outputsize": outputsize,  # "compact" ~100 datos; "full" puede disparar límites
-    }
+    else:
+        used_function = "TIME_SERIES_DAILY"
+        data = _fetch_raw(symbol, used_function, outputsize, api_key)
 
-    r = requests.get(url, params=params, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-
-    # Errores típicos del free tier
+    # Mensajes típicos (rate limit, etc.)
     if isinstance(data, dict) and ("Information" in data or "Note" in data or "Error Message" in data):
         msg = data.get("Information") or data.get("Note") or data.get("Error Message")
         raise RuntimeError(f"Alpha Vantage dijo: {msg}")
 
-    # Estructura según endpoint
-    key = "Time Series (Daily)" if function == "TIME_SERIES_DAILY" else "Time Series (Daily)"
+    # Extrae serie
+    key = "Time Series (Daily)"
     ts = data.get(key)
     if ts is None:
         raise RuntimeError(f"Respuesta inesperada: {str(data)[:200]}")
 
     df = pd.DataFrame.from_dict(ts, orient="index")
     df.index.name = "date"
-    df = df.sort_index()
+    df = df.rename(columns=str.lower).reset_index()
 
-    # Normalizamos nombres si vienen ajustados o no
     rename_map = {
-        "1. open": "open", "2. high": "high", "3. low": "low", "4. close": "close",
-        "5. adjusted close": "adj_close", "5. volume": "volume", "6. volume": "volume",
-        "7. dividend amount": "dividend", "8. split coefficient": "split"
+        "1. open": "open",
+        "2. high": "high",
+        "3. low": "low",
+        "4. close": "close",
+        "5. adjusted close": "adj_close",   # sólo si ADJUSTED
+        "5. volume": "volume",              # DAILY
+        "6. volume": "volume",              # ADJUSTED
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    # Recorte opcional por fecha (índice es string YYYY-MM-DD)
-    if start: df = df[df.index >= start]
-    if end:   df = df[df.index <= end]
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    for col in ("open","high","low","close","volume","adj_close"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.sort_values("date")
 
-    outdir.mkdir(parents=True, exist_ok=True)
-    out = outdir / f"{symbol.upper()}.csv"
-    df.to_csv(out, index=True)
+    if start:
+        df = df[df["date"] >= pd.to_datetime(start)]
+    if end:
+        df = df[df["date"] <= pd.to_datetime(end)]
 
-    # Respeta límites gratuitos
-    time.sleep(12)  # free tier suele permitir 5 req/min -> ~12s por seguridad
+    cols = [c for c in ["date","open","high","low","close","adj_close","volume"] if c in df.columns]
+    df_std = df[cols].dropna(subset=["date","close"])
+
+    safe_symbol = symbol.replace("/", "_").replace("\\", "_").upper()
+    # misma estructura que te dejé
+    symbol_dir = outdir / "alphavantage" / "prices" / safe_symbol
+    symbol_dir.mkdir(parents=True, exist_ok=True)
+
+    base_name = f"{safe_symbol}"
+    out = save_timeseries(df_std, symbol_dir, base_name=base_name, fmt=fmt)
+
+    # Respeta límites free
+    time.sleep(12)
     return out
+
+
 

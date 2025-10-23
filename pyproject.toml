@@ -1,7 +1,3 @@
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "finlab"
 version = "0.1.0"
@@ -14,12 +10,12 @@ dependencies = [
   "numpy>=1.24",
   "python-dotenv>=1.0",
   "requests>=2.31",
-  "matplotlib>=3.8"
+  "matplotlib>=3.8",
+  "pyarrow>=14.0"   
 ]
+[tool.setuptools]
+package-dir = {"" = "src"}
 
-[project.optional-dependencies]
-dev = ["pytest", "black", "ruff", "isort"]
-
-[project.scripts]
-finlab = "finlab.cli:app"
+[tool.setuptools.packages.find]
+where = ["src"]
 

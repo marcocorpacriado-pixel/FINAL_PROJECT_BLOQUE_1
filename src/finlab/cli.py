@@ -48,12 +48,18 @@ def fetch_alphavantage_cmd(
     symbol: str = typer.Option(..., "--symbol", help="Símbolo bursátil, p.ej. AAPL o MSFT"),
     start: str = typer.Option(None, "--start", help="Fecha inicial (YYYY-MM-DD)"),
     end: str = typer.Option(None, "--end", help="Fecha final (YYYY-MM-DD)"),
-    outdir: Path = typer.Option(Path("data"), "--outdir", help="Carpeta donde guardar el CSV")
+    outdir: Path = typer.Option(Path("data"), "--outdir", help="Carpeta base salida"),
+    adjusted: bool = typer.Option(False, "--adjusted", help="Usar TIME_SERIES_DAILY_ADJUSTED"),
+    outputsize: str = typer.Option("compact", "--outputsize", help="compact | full"),
+    fmt: str = typer.Option("csv", "--format", help="Formato: csv | parquet"),
 ):
-    """Descarga precios diarios desde AlphaVantage."""
+    """Descarga precios diarios desde AlphaVantage (elige CSV o Parquet)."""
     outdir.mkdir(parents=True, exist_ok=True)
-    path = fetch_prices_alphavantage(symbol, outdir, start=start, end=end)
+    path = fetch_prices_alphavantage(
+        symbol, outdir, start=start, end=end, adjusted=adjusted, outputsize=outputsize, fmt=fmt
+    )
     typer.echo(f"✅ Archivo guardado: {path}")
+
 
 @fetch_app.command("twelvedata")
 def fetch_twelvedata_cmd(
@@ -61,24 +67,28 @@ def fetch_twelvedata_cmd(
     interval: str = typer.Option("1day", "--interval", help="Intervalo: 1min, 5min, 1h, 1day, 1week..."),
     start: str = typer.Option(None, "--start", help="Fecha inicial YYYY-MM-DD"),
     end: str = typer.Option(None, "--end", help="Fecha final YYYY-MM-DD"),
-    outdir: Path = typer.Option(Path("data/twelvedata"), "--outdir", help="Carpeta destino CSV")
+    outdir: Path = typer.Option(Path("data/twelvedata"), "--outdir", help="Carpeta destino"),
+    fmt: str = typer.Option("csv", "--format", help="Formato de salida: csv | parquet"),
 ):
-    """Descarga precios desde TwelveData."""
+    """Descarga precios desde TwelveData (elige CSV o Parquet)."""
     outdir.mkdir(parents=True, exist_ok=True)
-    path = fetch_prices_twelvedata(symbol, outdir, interval=interval, start=start, end=end)
+    path = fetch_prices_twelvedata(symbol, outdir, interval=interval, start=start, end=end, fmt=fmt)
     typer.echo(f"✅ Archivo guardado: {path}")
+
 
 @fetch_app.command("marketstack")
 def fetch_marketstack_cmd(
     symbol: str = typer.Option(..., "--symbol", help="Símbolo bursátil, p.ej. TSLA"),
     start: str = typer.Option(None, "--start", help="YYYY-MM-DD"),
     end: str = typer.Option(None, "--end", help="YYYY-MM-DD"),
-    outdir: Path = typer.Option(Path("data/marketstack"), "--outdir", help="Carpeta destino CSV")
+    outdir: Path = typer.Option(Path("data/marketstack"), "--outdir", help="Carpeta destino"),
+    fmt: str = typer.Option("csv", "--format", help="Formato: csv | parquet"),
 ):
-    """Descarga precios EOD desde MarketStack."""
+    """Descarga precios EOD desde MarketStack (elige CSV o Parquet)."""
     outdir.mkdir(parents=True, exist_ok=True)
-    path = fetch_prices_marketstack(symbol, outdir, start=start, end=end)
+    path = fetch_prices_marketstack(symbol, outdir, start=start, end=end, fmt=fmt)
     typer.echo(f"✅ Archivo guardado: {path}")
+
 
 @fetch_app.command("batch")
 def fetch_batch(
@@ -88,34 +98,43 @@ def fetch_batch(
     end: str = typer.Option(None, "--end", help="YYYY-MM-DD"),
     outdir: Path = typer.Option(Path("data"), "--outdir", help="Carpeta base de salida"),
     interval: str = typer.Option("1day", "--interval", help="(solo TwelveData) 1min, 5min, 1h, 1day, ..."),
+    fmt: str = typer.Option("csv", "--format", help="Formato: csv | parquet"),
+    adjusted: bool = typer.Option(False, "--adjusted", help="(AlphaVantage) usar DAILY_ADJUSTED"),
+    outputsize: str = typer.Option("compact", "--outputsize", help="(AlphaVantage) compact | full"),
 ):
     """
     Descarga N series en lote desde el proveedor indicado.
-    Ejemplo:
-      finlab fetch batch alphavantage --symbols AAPL,MSFT,SPY
-      finlab fetch batch twelvedata --symbols BTC/USD,ETH/USD --interval 1day
-      finlab fetch batch marketstack --symbols TSLA,SPY --start 2024-01-01 --end 2024-03-01
+    Ejemplos:
+      finlab fetch batch alphavantage --symbols AAPL,MSFT,SPY --format parquet
+      finlab fetch batch twelvedata --symbols BTC/USD,ETH/USD --interval 1day --format parquet
+      finlab fetch batch marketstack --symbols TSLA,SPY --start 2024-01-01 --end 2024-03-01 --format parquet
     """
     syms: List[str] = [s.strip() for s in symbols.split(",") if s.strip()]
     if not syms:
         raise typer.BadParameter("Debes indicar al menos un símbolo en --symbols")
 
     saved: List[Path] = []
-    if provider.lower() == "alphavantage":
-        target = outdir / "alphavantage" / "prices"
+    prov = provider.lower()
+
+    if prov == "alphavantage":
+        target = outdir  # el extractor ya crea subcarpetas /alphavantage/prices/<SYM>
         target.mkdir(parents=True, exist_ok=True)
         for s in syms:
-            p = fetch_prices_alphavantage(s, target, start=start, end=end)
+            p = fetch_prices_alphavantage(
+                s, target, start=start, end=end, adjusted=adjusted, outputsize=outputsize, fmt=fmt
+            )
             saved.append(p)
-    elif provider.lower() == "twelvedata":
+
+    elif prov == "twelvedata":
         target = outdir / "twelvedata"
         for s in syms:
-            p = fetch_prices_twelvedata(s, target, interval=interval, start=start, end=end)
+            p = fetch_prices_twelvedata(s, target, interval=interval, start=start, end=end, fmt=fmt)
             saved.append(p)
-    elif provider.lower() == "marketstack":
+
+    elif prov == "marketstack":
         target = outdir / "marketstack"
         for s in syms:
-            p = fetch_prices_marketstack(s, target, start=start, end=end)
+            p = fetch_prices_marketstack(s, target, start=start, end=end, fmt=fmt)
             saved.append(p)
     else:
         raise typer.BadParameter("Proveedor desconocido. Usa: alphavantage | twelvedata | marketstack")
@@ -123,6 +142,7 @@ def fetch_batch(
     typer.echo("✅ Descargas completadas:")
     for p in saved:
         typer.echo(f"  - {p}")
+
 
 # -----------------------------
 # SIMULATE: asset / portfolio
@@ -132,14 +152,14 @@ from finlab.models.portfolio import Portfolio
 
 @simulate_app.command("asset")
 def simulate_asset(
-    input: Path = typer.Option(..., "--input", help="CSV con columnas estándar (date, open, high, low, close)"),
+    input: Path = typer.Option(..., "--input", help="Ruta a CSV o Parquet con columnas estándar (date, open, high, low, close)"),
     days: int = typer.Option(252, "--days"),
     n_paths: int = typer.Option(1000, "--n-paths"),
-    seed: Optional[int] = typer.Option(None, "--seed"),   # <-- antes: int
+    seed: Optional[int] = typer.Option(None, "--seed"),
     initial_value: float = typer.Option(1.0, "--initial-value"),
 ):
-    """Simula un activo a partir de su CSV (GBM univariado)."""
-    c = Candles.from_csv(input).clean(fill_method="ffill").to_business_days(fill=True)
+    """Simula un activo a partir de su archivo (CSV o Parquet) usando GBM univariado."""
+    c = Candles.from_any(input).clean(fill_method="ffill").to_business_days(fill=True)
     r = c.log_returns()
     mu = float(r.mean())
     sigma = float(r.std())
@@ -154,12 +174,11 @@ def simulate_asset(
         paths[:, t] = paths[:, t-1] * np.exp((mu - 0.5*sigma**2)*dt + sigma*np.sqrt(dt)*z)
 
     end_vals = paths[:, -1]
-    import numpy as np
     print(f"✅ Simulación activo: mean={end_vals.mean():.4f}, p5={np.percentile(end_vals,5):.4f}, p95={np.percentile(end_vals,95):.4f}")
 
 @simulate_app.command("portfolio")
 def simulate_portfolio(
-    inputs: str = typer.Option(..., "--inputs", help="Rutas CSV separadas por comas"),
+    inputs: str = typer.Option(..., "--inputs", help="Rutas a CSV/Parquet separadas por comas"),
     weights: str = typer.Option(..., "--weights", help="Pesos separados por comas; mismo orden que --inputs"),
     days: int = typer.Option(252, "--days"),
     n_paths: int = typer.Option(1000, "--n-paths"),
@@ -168,9 +187,9 @@ def simulate_portfolio(
     by_components: bool = typer.Option(False, "--components", help="Simular también cada activo y combinar"),
 ):
     """
-    Simula una cartera definida por varios CSV + pesos.
+    Simula una cartera definida por varios archivos (CSV o Parquet) + pesos.
     - Por defecto: simula la cartera como un único GBM (rápido).
-    - Con --components: simula cada activo y compone la cartera por pesos (rebalanceo diario).
+    - Con --components: simula cada activo y compone la cartera (rebalanceo diario).
     """
     paths_list = [p.strip() for p in inputs.split(",") if p.strip()]
     ws_list = [float(w.strip()) for w in weights.split(",") if w.strip()]
@@ -180,7 +199,7 @@ def simulate_portfolio(
     candles = []
     symbols = []
     for p in paths_list:
-        c = Candles.from_csv(Path(p)).clean(fill_method="ffill").to_business_days(fill=True)
+        c = Candles.from_any(Path(p)).clean(fill_method="ffill").to_business_days(fill=True)
         candles.append(c)
         symbols.append(c.symbol)
 
@@ -202,7 +221,7 @@ def simulate_portfolio(
 
 @simulate_app.command("sweep")
 def simulate_sweep(
-    inputs: str = typer.Option(..., "--inputs", help="Rutas CSV separadas por comas"),
+    inputs: str = typer.Option(..., "--inputs", help="Rutas a CSV/Parquet separadas por comas"),
     n: int = typer.Option(1000, "--n"),
     alpha_dirichlet: float = typer.Option(1.0, "--alpha-dirichlet"),
     alpha_var: float = typer.Option(0.95, "--alpha-var"),
@@ -212,22 +231,18 @@ def simulate_sweep(
     Genera N carteras aleatorias (pesos ~ Dirichlet) con los activos dados
     y muestra top/bottom por CVaR y por Sharpe.
     """
-    from finlab.models.candles import Candles
-    from finlab.models.portfolio import Portfolio
     from pathlib import Path
 
     paths_list = [p.strip() for p in inputs.split(",") if p.strip()]
     candles = []
     for p in paths_list:
-        c = Candles.from_csv(Path(p)).clean(fill_method="ffill").to_business_days(fill=True)
+        c = Candles.from_any(Path(p)).clean(fill_method="ffill").to_business_days(fill=True)
         candles.append(c)
 
     series = {c.symbol: c for c in candles}
-    # pesos iniciales no importan: el barrido genera nuevos pesos
     dummy_weights = {sym: 1.0 / len(series) for sym in series.keys()}
     port = Portfolio(series=series, weights=dummy_weights)
 
-    # aviso de correlación alta
     warn = port.max_correlation_warning(threshold=0.5)
     if warn:
         print(warn)
@@ -235,6 +250,7 @@ def simulate_sweep(
     summary = port.random_portfolios_summary(
         n=n, alpha_dirichlet=alpha_dirichlet, alpha_var=alpha_var, seed=seed
     )
+
 
 # -----------------------------
 # MAIN (¡AL FINAL!)
