@@ -164,6 +164,8 @@
 
 
   Método | Descripción | Ventajas
+
+  
   gbm	| Movimiento Browniano Geométrico con μ, σ históricos | Sencillo y base teórica.
   cholesky | Multivariante, preserva correlaciones lineales | Captura co-movimientos.
   copula | Dependencias no lineales con cópula gaussiana | Márgenes empíricas, correlación flexible.
