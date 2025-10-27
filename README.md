@@ -105,7 +105,7 @@ ALPHAVANTAGE_API_KEY=tu_clave
 MARKETSTACK_API_KEY=tu_clave  
 TWELVEDATA_API_KEY=tu_clave
 
-## **📦 Estructura del proyecto**
+## **📦 Estructura del proyecto
 src/finlab/
 │
 ├── cli.py                       # CLI (Typer)
@@ -123,7 +123,7 @@ src/finlab/
 └── run_plot_mc.py               # script de demo
 
 
-## ** ⚡ Uso rápido (Quickstart)**
+## ** ⚡ Uso rápido (Quickstart)
 **DESCARGA PARALELA (ALPHA VANTAGE)**
 python -m finlab.cli fetch batch alphavantage \
   --symbols AAPL,NVDA,MSFT \
@@ -222,7 +222,7 @@ print(md)  # o guarda en outputs/report.md
   
   -Los archivos se guardan en outputs/ si indicas save_dir
 
-  ##**🚀 Rendimiento & Paralelismo**
+  ## 🚀 Rendimiento & Paralelismo
   La descarga batch usa **ThreadPoolExecutor**
   python -m finlab.cli fetch batch twelvedata \
   --symbols AAPL,NVDA,MSFT,GOOGL,META \
@@ -237,7 +237,7 @@ Alpha Vantage impone límites estrictos; el extractor incorpora sleep para respe
 
 TwelveData/MarketStack toleran mejor el paralelismo moderado.
 
-## ✅ Calidad, Pruebas y Estilo##
+## ✅ Calidad, Pruebas y Estilo
 Estilo: black, isort, ruff.
 
 Tests: pytest (tests unitarios para normalización y simuladores).
@@ -246,7 +246,7 @@ Pre-commit (recomendado):
   pip install pre-commit
   pre-commit install
 
-## 🗺️ Roadmap##
+## 🗺️ Roadmap
  --Filtro local de --start/--end unificado para todos los proveedores (incl. Alpha Vantage tras full).
 
  --Barra de progreso (tqdm/Rich) en fetch batch.
@@ -257,6 +257,6 @@ Pre-commit (recomendado):
 
  --Dockerfile + docker-compose para “plug-n-play”.
 
- ##**🧾Licencia**##
+ ## 🧾Licencia
  MIT License — libre uso académico y profesional.
  
