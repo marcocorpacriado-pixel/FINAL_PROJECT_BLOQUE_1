@@ -229,7 +229,7 @@ print(md)  # o guarda en outputs/report.md
   --interval 1day --format parquet \
   --max-workers 8
 
-Buenas prácticas:
+Buenas prácticas: 
 
 Ajusta --max-workers según el proveedor y tus límites de API.
 
