@@ -49,8 +49,60 @@ Plataforma modular en Python para **descargar, normalizar y analizar series OHLC
 ## 🧱 Arquitectura & Contratos de Datos
 
 **Diagrama (alto nivel)**
+APIs (TwelveData / AlphaVantage / MarketStack)
+│
+▼
+extractors/* → CSV/Parquet normalizados
+│
+▼
+models.Candles → limpieza/validación/returns
+│
+▼
+models.Portfolio → métricas, MC, reportes
+│
+▼
+CLI Typer → flujos plug-n-play
+
+
+
+**Contrato `Candles.frame` (estándar mínimo):**
+
+| Columna | Tipo | Descripción |
+|--------|------|-------------|
+| `date` | datetime | índice temporal |
+| `open` | float | apertura |
+| `high` | float | máximo |
+| `low`  | float | mínimo |
+| `close`| float | cierre |
+| `volume` | float | opcional |
+| `adj_close` | float | opcional |
+
+Cualquier extractor **mapea** sus columnas al esquema estándar (_data contract_), garantizando que el resto del sistema sea **agnóstico** a la fuente original.
+
+---
+
+## 🚀 Instalación
+
+```bash
+git clone https://github.com/marcocorpacriado-pixel/FINAL_PROJECT_BLOQUE_1.git
+cd FINAL_PROJECT_BLOQUE_1
+
+python -m venv .venv
+# Linux/Mac
+source .venv/bin/activate
+# Windows (PowerShell)
+.\.venv\Scripts\Activate.ps1
+
+pip install -e ".[dev]"
+cp .env.example .env
 
 
 
 
+##🔑 Configuración de claves
 
+Edita .env con tus claves:
+
+ALPHAVANTAGE_API_KEY=tu_clave
+MARKETSTACK_API_KEY=tu_clave
+TWELVEDATA_API_KEY=tu_clave
