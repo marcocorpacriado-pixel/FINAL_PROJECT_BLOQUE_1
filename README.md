@@ -105,7 +105,7 @@ ALPHAVANTAGE_API_KEY=tu_clave
 MARKETSTACK_API_KEY=tu_clave  
 TWELVEDATA_API_KEY=tu_clave
 
-## **📦 Estructura del proyecto
+## 📦 Estructura del proyecto
 src/finlab/
 │
 ├── cli.py                       # CLI (Typer)
@@ -123,7 +123,7 @@ src/finlab/
 └── run_plot_mc.py               # script de demo
 
 
-## ** ⚡ Uso rápido (Quickstart)
+##  ⚡ Uso rápido (Quickstart)
 **DESCARGA PARALELA (ALPHA VANTAGE)**
 python -m finlab.cli fetch batch alphavantage \
   --symbols AAPL,NVDA,MSFT \
