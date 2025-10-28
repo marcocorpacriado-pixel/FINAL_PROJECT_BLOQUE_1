@@ -266,10 +266,10 @@ Pre-commit (recomendado):
 Comparativa sobre la misma cartera (SPY 50% — Oro 30% — BTC 20%), 252 días, 5k trayectorias, semivida EWMA=90 (cuando aplica).
 
 **Bandas 5–95% y medias**
-![MC Bands](outputs\mc_benchmark\mc_compare_bands.png)
+![MC Bands](assets/mc_benchmark/mc_compare_bands.png)
 
 **Distribuciones del valor final**
-![MC Terminal](outputs\mc_benchmark\mc_compare_terminal.png)
+![MC Terminal](assets/mc_benchmark/mc_compare_terminal.png)
 
 **Resumen (valor final)**
 <!-- generado automáticamente por scripts/mc_compare_all.py -->
