@@ -4,7 +4,7 @@ import sys
 # Añadimos la ruta a /src para poder importar finlab.*
 sys.path.append(str(Path(__file__).resolve().parent / "src"))
 
-from finlab.models.candles import Candles   # ✅ cambio aquí
+from finlab.models.candles import Candles   
 from finlab.models.portfolio import Portfolio
 
 # === Carga los datos ===
