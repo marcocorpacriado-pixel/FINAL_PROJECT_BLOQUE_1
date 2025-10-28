@@ -101,47 +101,74 @@ def fetch_batch(
     fmt: str = typer.Option("csv", "--format", help="Formato: csv | parquet"),
     adjusted: bool = typer.Option(False, "--adjusted", help="(AlphaVantage) usar DAILY_ADJUSTED"),
     outputsize: str = typer.Option("compact", "--outputsize", help="(AlphaVantage) compact | full"),
+    max_workers: int = typer.Option(4, "--max-workers", help="Número máximo de descargas simultáneas"),
 ):
     """
-    Descarga N series en lote desde el proveedor indicado.
+    Descarga N series en lote desde el proveedor indicado (en paralelo).
     Ejemplos:
       finlab fetch batch alphavantage --symbols AAPL,MSFT,SPY --format parquet
       finlab fetch batch twelvedata --symbols BTC/USD,ETH/USD --interval 1day --format parquet
       finlab fetch batch marketstack --symbols TSLA,SPY --start 2024-01-01 --end 2024-03-01 --format parquet
     """
+    import concurrent.futures
+    from functools import partial
+
     syms: List[str] = [s.strip() for s in symbols.split(",") if s.strip()]
     if not syms:
         raise typer.BadParameter("Debes indicar al menos un símbolo en --symbols")
 
-    saved: List[Path] = []
     prov = provider.lower()
+    saved: List[Path] = []
 
+    # --- Selecciona la función correspondiente ---
     if prov == "alphavantage":
-        target = outdir  # el extractor ya crea subcarpetas /alphavantage/prices/<SYM>
-        target.mkdir(parents=True, exist_ok=True)
-        for s in syms:
-            p = fetch_prices_alphavantage(
-                s, target, start=start, end=end, adjusted=adjusted, outputsize=outputsize, fmt=fmt
-            )
-            saved.append(p)
-
+        fetch_func = partial(
+            fetch_prices_alphavantage,
+            outdir=outdir,
+            start=start,
+            end=end,
+            adjusted=adjusted,
+            outputsize=outputsize,
+            fmt=fmt,
+        )
     elif prov == "twelvedata":
-        target = outdir / "twelvedata"
-        for s in syms:
-            p = fetch_prices_twelvedata(s, target, interval=interval, start=start, end=end, fmt=fmt)
-            saved.append(p)
-
+        fetch_func = partial(
+            fetch_prices_twelvedata,
+            outdir=outdir / "twelvedata",
+            interval=interval,
+            start=start,
+            end=end,
+            fmt=fmt,
+        )
     elif prov == "marketstack":
-        target = outdir / "marketstack"
-        for s in syms:
-            p = fetch_prices_marketstack(s, target, start=start, end=end, fmt=fmt)
-            saved.append(p)
+        fetch_func = partial(
+            fetch_prices_marketstack,
+            outdir=outdir / "marketstack",
+            start=start,
+            end=end,
+            fmt=fmt,
+        )
     else:
         raise typer.BadParameter("Proveedor desconocido. Usa: alphavantage | twelvedata | marketstack")
 
-    typer.echo("✅ Descargas completadas:")
+    # --- Descarga en paralelo ---
+    typer.echo(f"🚀 Iniciando descarga paralela de {len(syms)} símbolos desde {prov} (máx {max_workers} hilos)...")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_sym = {executor.submit(fetch_func, s): s for s in syms}
+        for future in concurrent.futures.as_completed(future_to_sym):
+            sym = future_to_sym[future]
+            try:
+                path = future.result()
+                saved.append(path)
+                typer.echo(f"✅ {sym}: guardado en {path}")
+            except Exception as e:
+                typer.echo(f"❌ Error en {sym}: {e}")
+
+    typer.echo("\n📦 Descargas completadas:")
     for p in saved:
         typer.echo(f"  - {p}")
+
 
 
 # -----------------------------
@@ -185,12 +212,24 @@ def simulate_portfolio(
     seed: Optional[int] = typer.Option(None, "--seed"),
     initial_value: float = typer.Option(1.0, "--initial-value"),
     by_components: bool = typer.Option(False, "--components", help="Simular también cada activo y combinar"),
+    mc_method: str = typer.Option("gbm", "--mc-method", help="gbm | cholesky | copula | bootstrap"),
+    halflife_days: Optional[float] = typer.Option(None, "--halflife-days", help="Semivida EWMA para ponderar recencia"),
+    block_len: int = typer.Option(10, "--block-len", help="Tamaño de bloque para bootstrap"),
+    mu_scale: float = typer.Option(1.0, "--mu-scale", help="Escala de la media diaria"),
+    sigma_scale: float = typer.Option(1.0, "--sigma-scale", help="Escala de la volatilidad diaria"),
+    save_dir: Optional[Path] = typer.Option(None, "--save-dir", help="Carpeta para PNGs y report.md"),
 ):
     """
     Simula una cartera definida por varios archivos (CSV o Parquet) + pesos.
-    - Por defecto: simula la cartera como un único GBM (rápido).
-    - Con --components: simula cada activo y compone la cartera (rebalanceo diario).
+    - --mc-method para elegir el motor de Monte Carlo.
+    - Con --components simula cada activo y luego compone la cartera.
+    - Si pasas --save-dir, se guardan report.md + gráficos.
     """
+    from finlab.models.candles import Candles
+    from finlab.models.portfolio import Portfolio
+    import numpy as np
+    import os
+
     paths_list = [p.strip() for p in inputs.split(",") if p.strip()]
     ws_list = [float(w.strip()) for w in weights.split(",") if w.strip()]
     if len(paths_list) != len(ws_list):
@@ -207,17 +246,48 @@ def simulate_portfolio(
     wmap = {sym: w for sym, w in zip(symbols, ws_list)}
     port = Portfolio(series=series, weights=wmap, initial_value=initial_value)
 
+    # Ejecuta simulación
     if by_components:
-        comps, port_paths = port.simulate_components(days=days, n_paths=n_paths, seed=seed)
-        import numpy as np
+        comps, port_paths = port.simulate_components(
+            days=days, n_paths=n_paths, seed=seed, mu_scale=mu_scale, sigma_scale=sigma_scale
+        )
         end_vals = port_paths[:, -1]
-        print(f"✅ Simulación cartera (componentes): mean={end_vals.mean():.4f}, p5={np.percentile(end_vals,5):.4f}, p95={np.percentile(end_vals,95):.4f}")
-        print(f"   Componentes simulados: {list(comps.keys())}")
+        typer.echo(f"✅ Simulación cartera (componentes): mean={end_vals.mean():.4f}, p5={np.percentile(end_vals,5):.4f}, p95={np.percentile(end_vals,95):.4f}")
+        typer.echo(f"   Componentes simulados: {list(comps.keys())}")
     else:
-        port_paths = port.simulate(days=days, n_paths=n_paths, seed=seed)
-        import numpy as np
+        port_paths = port.simulate(
+            days=days,
+            n_paths=n_paths,
+            seed=seed,
+            mu_scale=mu_scale,
+            sigma_scale=sigma_scale,
+            mc_method=mc_method,
+            halflife_days=halflife_days,
+            block_len=block_len,
+        )
         end_vals = port_paths[:, -1]
-        print(f"✅ Simulación cartera (GBM global): mean={end_vals.mean():.4f}, p5={np.percentile(end_vals,5):.4f}, p95={np.percentile(end_vals,95):.4f}")
+        typer.echo(f"✅ Simulación cartera ({mc_method}): mean={end_vals.mean():.4f}, p5={np.percentile(end_vals,5):.4f}, p95={np.percentile(end_vals,95):.4f}")
+
+    # Guardado de reportes/gráficos (opcional)
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        # Reporte Markdown
+        md = port.report(
+            mc_days=days,
+            mc_paths=n_paths,
+            mu_scale=mu_scale,
+            sigma_scale=sigma_scale,
+        )
+        (Path(save_dir) / "report.md").write_text(md, encoding="utf-8")
+        # Gráficos
+        port.plots_report(
+            save_dir=str(save_dir),
+            mc_days=days,
+            mc_paths=n_paths,
+            mu_scale=mu_scale,
+            sigma_scale=sigma_scale,
+        )
+        typer.echo(f"📝 report.md y 📈 PNGs guardados en: {save_dir}")
 
 @simulate_app.command("sweep")
 def simulate_sweep(

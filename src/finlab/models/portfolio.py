@@ -537,9 +537,21 @@ class Portfolio:
             nobs = len(r)
             start_eff = r.index.min()
             end_eff = r.index.max()
+                    # --- CAGR esperado (desde media log anualizada) y CAGR histórico (realizado) ---
+            mean_ann = st.get("mean", np.nan)  # μ log anualizado
+            cagr_expected = float(np.exp(mean_ann) - 1.0) if np.isfinite(mean_ann) else np.nan
+
+            # Equity a partir de retornos log: eq_t = exp(sum_{τ≤t} r_τ)
+            eq = np.exp(r.cumsum())
+            # Años efectivos de la muestra
+            years = (pd.to_datetime(end_eff) - pd.to_datetime(start_eff)).days / 365.25 if nobs > 1 else np.nan
+            # Crecimiento total (multiplicador); eq.iloc[0] ≈ 1.0 por construcción
+            growth = float(eq.iloc[-1] / eq.iloc[0]) if len(eq) >= 2 else np.nan
+            cagr_real = float(growth ** (1.0 / years) - 1.0) if (np.isfinite(growth) and growth > 0 and np.isfinite(years) and years > 0) else np.nan
+
         except Exception as e:
             return f"# Portfolio Report\n\n**Error preparando métricas:** `{e}`"
-
+        
         def _max_drawdown(x: pd.Series) -> float:
             eq = (x.cumsum()).pipe(np.exp)  # log-returns -> equity
             peak = np.maximum.accumulate(eq.values)
@@ -564,6 +576,9 @@ class Portfolio:
             f"- Volatilidad: **{st['std']*100:.2f}%**",
             f"- Sharpe (rf={rf*100:.2f}%): **{st['sharpe'] if not np.isnan(st['sharpe']) else 'N/A'}**",
             f"- Máx. drawdown (desde retornos log): **{mdd*100:.2f}%**",
+             f"- CAGR esperado (desde μ log): **{cagr_expected*100:.2f}%**",
+            f"- CAGR histórico (realizado): **{(cagr_real*100 if np.isfinite(cagr_real) else float('nan')):.2f}%**",
+
         ]
 
         if include_warnings:
