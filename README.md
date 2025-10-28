@@ -275,7 +275,11 @@ Comparativa sobre la misma cartera (SPY 50% — Oro 30% — BTC 20%), 252 días,
 <!-- generado automáticamente por scripts/mc_compare_all.py -->
 | Método | Valor final esperado | p5 | p95 |
 |:--|--:|--:|--:|
-*(ver `outputs\mc_benchmark\mc_summary_terminal.md` para números exactos)*
+| GBM | 1.0000 | 0.9790 | 1.0220 |
+| Cholesky | 1.3740 | 1.0500 | 1.7610 |
+| Cópula | 1.3640 | 1.0870 | 1.6860 |
+| Bootstrap | 1.4140 | 1.1080 | 1.7650 |
+
 
 > Notas:
 > - **Cholesky** preserva correlación lineal; **Cópula** mantiene correlación objetivo y márgenes empíricas.
