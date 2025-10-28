@@ -199,7 +199,7 @@ port.plot_simulation(paths, title="MC — GBM cartera 60/40")
 md = port.report(mc_days=252, mc_paths=1000)
 print(md)  # o guarda en outputs/report.md
 
-##**📊 Reportes y Visualizaciones**
+## 📊 Reportes y Visualizaciones
 **.report()** → Markdown con:
 
   -Rango efectivo de datos (intersección temporal).
