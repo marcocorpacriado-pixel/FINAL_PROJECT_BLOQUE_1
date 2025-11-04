@@ -175,6 +175,8 @@ python -m finlab.cli simulate --help
 | **Alpha Vantage** | ❌ (API)           | `--outputsize` = `compact` (100d) o `full` | La API no acepta `start/end`. El programa puede filtrar localmente tras descargar. |
 | **TwelveData**    | ✅                 | `--interval`, `--start`, `--end`           | Intervalos 1min…1day. Ideal para rangos definidos.                                 |
 | **MarketStack**   | ✅                 | `--start`, `--end`                         | Precios diarios en el rango indicado.                                              |
+| **Yahoo Finance** | ✅ (cliente local) | `--start`, `--end` *(via yfinance)*        | No usa API directa: descarga todo y filtra localmente; soporta acciones, ETFs, FX. |
+
 
 **NOTA**: Para Alpha Vantage, usa --outputsize full si quieres rango completo y, si lo deseas, aplica filtro local con --start/--end (a nivel de programa).
 
