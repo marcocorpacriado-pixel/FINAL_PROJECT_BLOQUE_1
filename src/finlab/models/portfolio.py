@@ -1,3 +1,5 @@
+
+
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple, List 
@@ -768,18 +770,27 @@ class Portfolio:
         return paths
 
 
+    
     def _simulate_copula(
-        self,
-        days: int,
-        n_paths: int,
-        seed: Optional[int],
-        halflife_days: float | None = None,
-        lam: float | None = None,
-    ) -> np.ndarray:
+    self,
+    days: int,
+    n_paths: int,
+    seed: Optional[int],
+    halflife_days: float | None = None,
+    lam: float | None = None,
+    *,
+    use_kendall: bool = False,   # <- mejora opcional: usa τ de Kendall para la correlación latente
+) -> np.ndarray:
         """
-        Cópula gaussiana (Iman–Conover) con recencia.
+        Simulación Monte Carlo con CÓPULA GAUSSIANA (Iman–Conover + recencia):
+        1) Estima correlación objetivo de la *latente normal* (por defecto Pearson de retornos,
+            opcionalmente Kendall→Gauss vía R = sin(π τ / 2)).
+        2) Genera Z ~ N(0,R) (normales correlacionadas).
+        3) Para cada activo: bootstrap ponderado de retornos log (con recencia), ORDENAR la muestra,
+            y asignar por rangos de Z (rank-matching) -> márgenes empíricas con correlación gaussiana deseada.
+        4) Convierte a retornos simples y compone el valor de la cartera.
         """
-        df = self._asset_returns_matrix()
+        df = self._asset_returns_matrix()      # T×N, log-returns
         T, N = df.shape
         if T < 50:
             raise ValueError("Histórico insuficiente para cópula (mín ~50 días).")
@@ -788,51 +799,73 @@ class Portfolio:
         syms = list(df.columns)
         wport = np.array([self.weights[s] for s in syms], dtype=float)
 
-        # correlación objetivo ponderada
-        w = _exp_weights(T, halflife_days=halflife_days, lam=lam)
-        Cw = _weighted_cov(df, w)
-        Corr = _cov_to_corr(Cw)
+        # -------- 1) Correlación objetivo de la COPULA --------
+        w_time = _exp_weights(T, halflife_days=halflife_days, lam=lam)  # pesos por recencia (suman 1)
 
-        # Cholesky con jitter
+        if use_kendall:
+            # τ ponderada (aprox. sin pesos nativos: usa τ no ponderada como compromiso)
+            # Nota: numpy/scipy no exponen τ ponderada; para rigor, habría que implementarla.
+            import scipy.stats as st
+            tau = np.eye(N)
+            for i in range(N):
+                for j in range(i+1, N):
+                    tij, _ = st.kendalltau(df.iloc[:, i], df.iloc[:, j])
+                    tau[i, j] = tau[j, i] = 0.0 if tij is None or np.isnan(tij) else tij
+            Corr = np.sin(0.5 * np.pi * tau)   # R = sin(pi * tau / 2)
+        else:
+            # Pearson ponderado por recencia: Cw -> Corr
+            Cw = _weighted_cov(df, w_time)     # cov ponderada T×N -> N×N
+            Corr = _cov_to_corr(Cw)
+
+        # -------- 2) Cholesky con jitter para PD --------
         L = None
         jitter = 0.0
-        for _ in range(6):
+        for _ in range(8):
             try:
                 L = np.linalg.cholesky(Corr + np.eye(N) * jitter)
                 break
             except np.linalg.LinAlgError:
                 jitter = 1e-12 if jitter == 0.0 else jitter * 10
         if L is None:
+            # fallback diagonal (independencia) si no hay forma
             L = np.eye(N)
 
-        # Precalcular márgenes ordenadas por activo
-        Xcols_sorted = [np.sort(df[c].values) for c in syms]
-        p_rows = w  # prob. de bootstrap por fila (recencia)
-
+        # -------- 3) Simulación --------
         paths = np.zeros((n_paths, days))
         paths[:, 0] = self.initial_value
 
-        # Generar todo vectorizado
-        all_samples = rng.choice(T, size=(n_paths, days-1), replace=True, p=p_rows)
-        Z = rng.standard_normal(size=(n_paths, days-1, N))
-        Z_corr = Z @ L.T
+        # Generamos todas las normales (P × (days-1) × N)
+        Z = rng.standard_normal(size=(n_paths, days - 1, N))
+        Z_corr = Z @ L.T   # aplica correlación latente
 
+        # Para cada trayectoria
         for p in range(n_paths):
-            sim_log = np.zeros((days-1, N))
+            sim_log = np.zeros((days - 1, N))
+            # Para cada activo, hacemos bootstrap ponderado de T retornos log
             for i in range(N):
-                samp = Xcols_sorted[i][all_samples[p]]
+                # índices bootstrap con prob. por recencia (independientes por activo)
+                samp_idx = rng.choice(T, size=days - 1, replace=True, p=w_time)
+                # muestra marginal de retornos log
+                samp = df.iloc[samp_idx, i].values
+                # ORDENAR la muestra marginal para poder asignar por rangos de Z (Iman–Conover)
+                samp_sorted = np.sort(samp)
+                # orden de los Z correlacionados (rangos de la latente normal)
                 order = np.argsort(Z_corr[p, :, i])
-                sim_log[order, i] = samp
-            sim_rets = np.exp(sim_log) - 1.0
+                # rank-matching: el más pequeño Z recibe el más pequeño valor marginal, etc.
+                sim_log[order, i] = samp_sorted
+
+            # 4) log→simple y composición de cartera por pesos
+            sim_rets = np.exp(sim_log) - 1.0      # (days-1) × N
             v = self.initial_value
             path = [v]
             for t in range(days - 1):
-                r_day = (sim_rets[t] * wport).sum()
-                v = v * (1.0 + r_day)
+                r_day = float(sim_rets[t].dot(wport))
+                v *= (1.0 + r_day)
                 path.append(v)
             paths[p, :] = np.array(path)
 
         return paths
+
 
     
     def plot_mc_comparison_with_bands(
@@ -1082,4 +1115,3 @@ class Portfolio:
                 "best_sharpe": best_sharpe,
                 "worst_sharpe": worst_sharpe,
             }
-    
