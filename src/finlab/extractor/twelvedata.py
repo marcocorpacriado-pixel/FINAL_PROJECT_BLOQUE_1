@@ -80,5 +80,3 @@ def fetch_prices_twelvedata(
 
     time.sleep(1.2)
     return out_path
-
-
