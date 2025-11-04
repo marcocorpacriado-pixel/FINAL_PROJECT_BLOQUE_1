@@ -263,22 +263,17 @@ Pre-commit (recomendado):
 
  ## 🧪 Benchmark Monte Carlo (GBM vs Cholesky vs Cópula vs Bootstrap)
 
-Comparativa sobre la misma cartera (SPY 50% — Oro 30% — BTC 20%), 252 días, 5k trayectorias, semivida EWMA=90 (cuando aplica).
+Comparativa sobre la misma cartera (**SPY 50% — Oro 30% — BTC 20%**), **252 días**, **5000 trayectorias** por método.
+La **semivida EWMA = 90** días se usa cuando aplica (Cholesky, Cópula, Bootstrap).
 
-**Bandas 5–95% y medias**
-![MC Bands](assets/mc_benchmark/mc_compare_bands.png)
+![Benchmark Monte Carlo — GBM vs Cholesky vs Cópula vs Bootstrap](docs/assets/mc_benchmark_all_methods.png)
 
-**Distribuciones del valor final**
-![MC Terminal](assets/mc_benchmark/mc_compare_terminal.png)
+**Notas:**
+- **GBM**: simula la cartera con μ y σ (log) de la cartera (rebalanceo diario implícito).
+- **Cholesky**: simula retornos multivariantes ~𝒩(μ,Σ) con correlaciones históricas (EWMA).
+- **Cópula Gaussiana**: preserva márgenes empíricas (bootstrap ponderado) + dependencias vía Iman–Conover.
+- **Bootstrap (block)**: remuestreo por bloques para mantener dependencia temporal (si `block_len>1`).
 
-**Resumen (valor final)**
-<!-- generado automáticamente por scripts/mc_compare_all.py -->
-| Método | Valor final esperado | p5 | p95 |
-|:--|--:|--:|--:|
-| GBM | 1.0000 | 0.9790 | 1.0220 |
-| Cholesky | 1.3740 | 1.0500 | 1.7610 |
-| Cópula | 1.3640 | 1.0870 | 1.6860 |
-| Bootstrap | 1.4140 | 1.1080 | 1.7650 |
 
 
 > Notas:
