@@ -1,3 +1,8 @@
+
+
+
+
+
 # src/finlab/extractor/yahoo.py
 from __future__ import annotations
 from pathlib import Path
@@ -90,7 +95,3 @@ def fetch_prices_yahoo(
     base_name = f"{safe}_{interval}"
     path = save_timeseries(df_std, dest_dir, base_name=base_name, fmt=fmt)
     return path
-
-
-
-
