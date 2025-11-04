@@ -1,7 +1,7 @@
 from pathlib import Path
 import os, time, requests, pandas as pd
 from .io_utils import save_timeseries
-
+from ..cache import cache
 _PREMIUM_HINTS = (
     "premium endpoint",
     "premium plan",
@@ -35,11 +35,23 @@ def fetch_prices_alphavantage(
     adjusted: bool = False,      # si da premium, haremos fallback automático
     outputsize: str = "compact", # "compact" más seguro en free
     fmt: str = "csv",
+    use_cache : bool = True,
 ) -> Path:
     """
     Descarga precios diarios desde Alpha Vantage.
     Si 'adjusted=True' y el endpoint es premium, hace fallback a DAILY normal.
     """
+     # 1) Verificar cache primero
+    if use_cache:
+        cached_data = cache.get(symbol, "alphavantage", start=start, end=end, adjusted=adjusted, outputsize=outputsize)
+        if cached_data is not None:
+            print(f"✅ {symbol}: Usando datos en cache (AlphaVantage)")
+            safe_symbol = symbol.replace("/", "_").replace("\\", "_").upper()
+            symbol_dir = outdir / "alphavantage" / "prices" / safe_symbol
+            symbol_dir.mkdir(parents=True, exist_ok=True)
+            base_name = f"{safe_symbol}"
+            out = save_timeseries(cached_data, symbol_dir, base_name=base_name, fmt=fmt)
+            return out
     api_key = os.getenv("ALPHAVANTAGE_API_KEY")
     if not api_key:
         raise RuntimeError("❌ Falta ALPHAVANTAGE_API_KEY en .env")

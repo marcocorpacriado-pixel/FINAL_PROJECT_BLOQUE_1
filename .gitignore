@@ -224,4 +224,5 @@ run_plot_mc.py
 
 # Archivos del sistema (Windows / macOS)
 Thumbs.db
-.DS_Stor
+.DS_Store
+

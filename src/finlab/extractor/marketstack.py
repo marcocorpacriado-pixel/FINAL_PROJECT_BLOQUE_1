@@ -1,6 +1,7 @@
 from pathlib import Path
 import os, time, requests, pandas as pd
 from .io_utils import save_timeseries
+from ..cache import cache
 
 def _request_marketstack(url: str, params: dict) -> dict:
     r = requests.get(url, params=params, timeout=30)
@@ -10,15 +11,28 @@ def _request_marketstack(url: str, params: dict) -> dict:
 def fetch_prices_marketstack(
     symbol: str,
     outdir: Path,
-    start: str | None = None,   # YYYY-MM-DD
-    end: str | None = None,     # YYYY-MM-DD
+    start: str | None = None,   
+    end: str | None = None,     
     *,
-    fmt: str = "csv",           # <-- NUEVO: 'csv' | 'parquet'
+    fmt: str = "csv",
+    use_cache:bool = True,           
 ) -> Path:
     """
     Descarga precios EOD desde MarketStack (free tier).
     Estandariza columnas y guarda en CSV o Parquet.
     """
+    # 1) Verificar cache primero
+    if use_cache:
+        cached_data = cache.get(symbol, "marketstack", start=start, end=end)
+        if cached_data is not None:
+            print(f"✅ {symbol}: Usando datos en cache (MarketStack)")
+            safe_symbol = symbol.replace("/", "_").replace("\\", "_").upper()
+            symbol_dir = outdir / "marketstack" / safe_symbol
+            symbol_dir.mkdir(parents=True, exist_ok=True)
+            base_name = f"{safe_symbol}"
+            out = save_timeseries(cached_data, symbol_dir, base_name=base_name, fmt=fmt)
+            return out
+        
     api_key = os.getenv("MARKETSTACK_API_KEY")
     if not api_key:
         raise RuntimeError("❌ Falta MARKETSTACK_API_KEY en .env")

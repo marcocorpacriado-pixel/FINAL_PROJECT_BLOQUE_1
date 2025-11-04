@@ -1,3 +1,6 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
 [project]
 name = "finlab"
 version = "0.1.0"
@@ -19,3 +22,5 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[project.scripts]
+finlab = "finlab.cli:app"

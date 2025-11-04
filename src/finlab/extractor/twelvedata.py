@@ -2,6 +2,7 @@
 from pathlib import Path
 import os, time, requests, pandas as pd
 from .io_utils import save_timeseries
+from ..cache import cache
 
 def fetch_prices_twelvedata(
     symbol: str,
@@ -10,13 +11,24 @@ def fetch_prices_twelvedata(
     start: str | None = None,
     end: str | None = None,
     *,
-    fmt: str = "csv",  # <--- NUEVO: 'csv' | 'parquet'
+    fmt: str = "csv",
+    use_cache: bool = True,
 ) -> Path:
     """
     Descarga datos desde la API gratuita de TwelveData.
     Compatible con bolsa, forex y criptos.
     Permite guardar en CSV o Parquet (fmt).
     """
+    # 1) Verificar cache primero
+    if use_cache:
+        cached_data = cache.get(symbol, "twelvedata", interval=interval, start=start, end=end)
+        if cached_data is not None:
+            print(f"✅ {symbol}: Usando datos en cache (TwelveData)")
+            safe_symbol = symbol.replace("/", "_").replace("\\", "_")
+            symbol_dir = outdir / safe_symbol
+            symbol_dir.mkdir(parents=True, exist_ok=True)
+            out_path = save_timeseries(cached_data, symbol_dir, base_name=f"{safe_symbol}_{interval}", fmt=fmt)
+            return out_path
     api_key = os.getenv("TWELVEDATA_API_KEY")
     if not api_key:
         raise RuntimeError("❌ Falta TWELVEDATA_API_KEY en el archivo .env")

@@ -3,6 +3,9 @@ from typing import List
 import typer
 from dotenv import load_dotenv
 from typing import List, Optional
+from finlab.extractor.yahoo import fetch_prices_yahoo
+
+
 
 # -----------------------------
 # APP raíz y subgrupos
@@ -89,15 +92,32 @@ def fetch_marketstack_cmd(
     path = fetch_prices_marketstack(symbol, outdir, start=start, end=end, fmt=fmt)
     typer.echo(f"✅ Archivo guardado: {path}")
 
+@fetch_app.command("yahoo")
+def fetch_yahoo_cmd(
+    symbol: str = typer.Option(..., "--symbol", help="Ticker Yahoo, p.ej. SPY, BTC-USD, SAP.DE, REMX"),
+    interval: str = typer.Option("1d", "--interval", help="1m,5m,15m,1h,1d,1wk,1mo"),
+    start: str = typer.Option(None, "--start", help="YYYY-MM-DD"),
+    end: str = typer.Option(None, "--end", help="YYYY-MM-DD"),
+    outdir: Path = typer.Option(Path("data"), "--outdir"),
+    fmt: str = typer.Option("parquet", "--format", help="csv | parquet"),
+    auto_adjust: bool = typer.Option(False, "--auto-adjust", help="Ajustar OHLC por dividendos/splits"),
+):
+    """Descarga precios desde Yahoo Finance para un símbolo."""
+    outdir.mkdir(parents=True, exist_ok=True)
+    path = fetch_prices_yahoo(
+        symbol, outdir, interval=interval, start=start, end=end, fmt=fmt, auto_adjust=auto_adjust
+    )
+    typer.echo(f"✅ Archivo guardado: {path}")
+
 
 @fetch_app.command("batch")
 def fetch_batch(
-    provider: str = typer.Argument(..., help="Proveedor: alphavantage | twelvedata | marketstack"),
+    provider: str = typer.Argument(..., help="Proveedor: alphavantage | twelvedata | marketstack | yahoo"),
     symbols: str = typer.Option(..., "--symbols", help="Lista separada por comas, p.ej. AAPL,MSFT,SPY"),
     start: str = typer.Option(None, "--start", help="YYYY-MM-DD"),
     end: str = typer.Option(None, "--end", help="YYYY-MM-DD"),
     outdir: Path = typer.Option(Path("data"), "--outdir", help="Carpeta base de salida"),
-    interval: str = typer.Option("1day", "--interval", help="(solo TwelveData) 1min, 5min, 1h, 1day, ..."),
+    interval: str = typer.Option("1day", "--interval", help="(solo TwelveData/Yahoo) 1min, 5min, 1h, 1day, 1d, 1wk..."),
     fmt: str = typer.Option("csv", "--format", help="Formato: csv | parquet"),
     adjusted: bool = typer.Option(False, "--adjusted", help="(AlphaVantage) usar DAILY_ADJUSTED"),
     outputsize: str = typer.Option("compact", "--outputsize", help="(AlphaVantage) compact | full"),
@@ -109,6 +129,7 @@ def fetch_batch(
       finlab fetch batch alphavantage --symbols AAPL,MSFT,SPY --format parquet
       finlab fetch batch twelvedata --symbols BTC/USD,ETH/USD --interval 1day --format parquet
       finlab fetch batch marketstack --symbols TSLA,SPY --start 2024-01-01 --end 2024-03-01 --format parquet
+      finlab fetch batch yahoo --symbols QQQ,GLD,BTC-USD --interval 1d --format parquet
     """
     import concurrent.futures
     from functools import partial
@@ -131,6 +152,7 @@ def fetch_batch(
             outputsize=outputsize,
             fmt=fmt,
         )
+
     elif prov == "twelvedata":
         fetch_func = partial(
             fetch_prices_twelvedata,
@@ -140,6 +162,7 @@ def fetch_batch(
             end=end,
             fmt=fmt,
         )
+
     elif prov == "marketstack":
         fetch_func = partial(
             fetch_prices_marketstack,
@@ -148,8 +171,19 @@ def fetch_batch(
             end=end,
             fmt=fmt,
         )
+
+    elif prov == "yahoo":
+        fetch_func = partial(
+            fetch_prices_yahoo,
+            outdir=outdir / "yahoo",
+            interval=interval,
+            start=start,
+            end=end,
+            fmt=fmt,
+        )
+
     else:
-        raise typer.BadParameter("Proveedor desconocido. Usa: alphavantage | twelvedata | marketstack")
+        raise typer.BadParameter("Proveedor desconocido. Usa: alphavantage | twelvedata | marketstack | yahoo")
 
     # --- Descarga en paralelo ---
     typer.echo(f"🚀 Iniciando descarga paralela de {len(syms)} símbolos desde {prov} (máx {max_workers} hilos)...")
@@ -213,17 +247,15 @@ def simulate_portfolio(
     initial_value: float = typer.Option(1.0, "--initial-value"),
     by_components: bool = typer.Option(False, "--components", help="Simular también cada activo y combinar"),
     mc_method: str = typer.Option("gbm", "--mc-method", help="gbm | cholesky | copula | bootstrap"),
-    halflife_days: Optional[float] = typer.Option(None, "--halflife-days", help="Semivida EWMA para ponderar recencia"),
-    block_len: int = typer.Option(10, "--block-len", help="Tamaño de bloque para bootstrap"),
+    # ❌ ELIMINAR estos parámetros que no existen en la versión simplificada
+    # halflife_days: Optional[float] = typer.Option(None, "--halflife-days", help="Semivida EWMA para ponderar recencia"),
+    # block_len: int = typer.Option(10, "--block-len", help="Tamaño de bloque para bootstrap"),
     mu_scale: float = typer.Option(1.0, "--mu-scale", help="Escala de la media diaria"),
     sigma_scale: float = typer.Option(1.0, "--sigma-scale", help="Escala de la volatilidad diaria"),
     save_dir: Optional[Path] = typer.Option(None, "--save-dir", help="Carpeta para PNGs y report.md"),
 ):
     """
     Simula una cartera definida por varios archivos (CSV o Parquet) + pesos.
-    - --mc-method para elegir el motor de Monte Carlo.
-    - Con --components simula cada activo y luego compone la cartera.
-    - Si pasas --save-dir, se guardan report.md + gráficos.
     """
     from finlab.models.candles import Candles
     from finlab.models.portfolio import Portfolio
@@ -238,13 +270,19 @@ def simulate_portfolio(
     candles = []
     symbols = []
     for p in paths_list:
-        c = Candles.from_any(Path(p)).clean(fill_method="ffill").to_business_days(fill=True)
+        # ✅ CORREGIDO: usar fill_method="none" en lugar de fill=True
+        c = Candles.from_any(Path(p)).clean(fill_method="ffill").to_business_days(fill_method="none")
         candles.append(c)
         symbols.append(c.symbol)
 
     series = {c.symbol: c for c in candles}
     wmap = {sym: w for sym, w in zip(symbols, ws_list)}
     port = Portfolio(series=series, weights=wmap, initial_value=initial_value)
+
+    # Detección de frecuencias mixtas
+    freq_info = port.detect_frequency_mismatch()
+    for warning in freq_info['warnings']:
+        typer.echo(typer.style(warning, fg=typer.colors.YELLOW))
 
     # Ejecuta simulación
     if by_components:
@@ -255,6 +293,7 @@ def simulate_portfolio(
         typer.echo(f"✅ Simulación cartera (componentes): mean={end_vals.mean():.4f}, p5={np.percentile(end_vals,5):.4f}, p95={np.percentile(end_vals,95):.4f}")
         typer.echo(f"   Componentes simulados: {list(comps.keys())}")
     else:
+        # ✅ CORREGIDO: eliminar parámetros que no existen
         port_paths = port.simulate(
             days=days,
             n_paths=n_paths,
@@ -262,8 +301,7 @@ def simulate_portfolio(
             mu_scale=mu_scale,
             sigma_scale=sigma_scale,
             mc_method=mc_method,
-            halflife_days=halflife_days,
-            block_len=block_len,
+            # ❌ ELIMINADOS: halflife_days y block_len
         )
         end_vals = port_paths[:, -1]
         typer.echo(f"✅ Simulación cartera ({mc_method}): mean={end_vals.mean():.4f}, p5={np.percentile(end_vals,5):.4f}, p95={np.percentile(end_vals,95):.4f}")
