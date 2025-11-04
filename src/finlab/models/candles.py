@@ -181,18 +181,21 @@ class Candles:
         plt.tight_layout()
         plt.show()
 
+    
     def clean(
-        self,
-        drop_duplicates: bool = True,
-        sort: bool = True,
-        fill_method: str | None = None,
-        clip_outliers: tuple[float, float] | None = None,
-    ) -> "Candles":
+    self,
+    drop_duplicates: bool = True,
+    sort: bool = True,
+    fill_method: str | None = None,
+    clip_outliers: tuple[float, float] | None = None,
+) -> "Candles":
         df = self.frame.copy()
+
+        # normaliza fechas y tz SIEMPRE aquí
+        df = _normalize_dates_no_tz(df)
 
         if drop_duplicates:
             df = df.drop_duplicates(subset=["date"], keep="last")
-
         if sort:
             df = df.sort_values("date")
 
@@ -203,14 +206,16 @@ class Candles:
 
         if fill_method in {"ffill", "bfill"}:
             df = df.set_index("date")
+            cols = [c for c in ["open", "high", "low", "close"] if c in df.columns]
             if fill_method == "ffill":
-                df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].ffill()
+                df[cols] = df[cols].ffill()
             else:
-                df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].bfill()
+                df[cols] = df[cols].bfill()
             df = df.reset_index()
 
         df = df.dropna(subset=["date", "close"]).reset_index(drop=True)
         return Candles(symbol=self.symbol, frame=df)
+
 
     # ===========================
     #  MÉTODO SIMPLIFICADO
@@ -354,4 +359,5 @@ class Candles:
         if prefer_adj_close and "adj_close" in df.columns:
             return "adj_close"
         return "close"
+
 
