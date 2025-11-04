@@ -1,8 +1,3 @@
-
-
-
-
-
 # src/finlab/extractor/yahoo.py
 from __future__ import annotations
 from pathlib import Path
