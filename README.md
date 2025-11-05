@@ -5,7 +5,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 
-Plataforma modular en Python para **descargar, normalizar y analizar series OHLC** desde múltiples APIs financieras, construir **carteras**, y ejecutar **simulaciones de Monte Carlo** (GBM, Cholesky, Cópulas, Bootstrap). Incluye CLI con ejecución **paralela** y reportes automáticos (Markdown y gráficos).
+Plataforma modular en Python para **descargar, normalizar y analizar series OHLCV** desde múltiples APIs financieras, construir **carteras**, y ejecutar **simulaciones de Monte Carlo** (GBM, Cholesky, Cópulas, Bootstrap). Incluye CLI con ejecución **paralela** y reportes automáticos (Markdown y gráficos).
 
 > Proyecto final del Bloque 1 del Máster en Inteligencia Artificial y Computación Cuántica aplicada a los Mercados Financieros (MIAX).
 
