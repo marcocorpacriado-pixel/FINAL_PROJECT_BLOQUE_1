@@ -166,7 +166,7 @@ python -m finlab.cli simulate portfolio \
 
 
 
-##**REFERENCIA CLI**##
+**REFERENCIA CLI**
 python -m finlab.cli --help
 python -m finlab.cli fetch --help
 python -m finlab.cli simulate --help
@@ -256,6 +256,8 @@ Ajusta --max-workers según el proveedor y tus límites de API.
 Alpha Vantage impone límites estrictos; el extractor incorpora sleep para respetarlos.
 
 TwelveData/MarketStack toleran mejor el paralelismo moderado.
+
+Con YahooFinance puede haver problemas con la descaraga en paralelismo
 
 ## ✅ Calidad, Pruebas y Estilo
 Estilo: black, isort, ruff.
