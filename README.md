@@ -13,6 +13,7 @@ Plataforma modular en Python para **descargar, normalizar y analizar series OHLC
 
 ## 🗂️ Índice
 
+- [Diagrama UML del proyecto](#-Diagrama--UML--del--proyecto)
 - [Características](#-características)
 - [Arquitectura & Contratos de Datos](#-arquitectura--contratos-de-datos)
 - [Instalación](#-instalación)
@@ -29,6 +30,23 @@ Plataforma modular en Python para **descargar, normalizar y analizar series OHLC
 - [Licencia](#-licencia)
 
 ---
+
+---
+
+## 🧩 Diagrama UML del proyecto
+
+Los siguientes diagramas muestran la estructura interna del proyecto **finlab**, incluyendo clases, dependencias y relaciones principales.  
+Han sido generados automáticamente con **Pyreverse (Pylint) + Graphviz** y están disponibles dentro del repositorio en `docs/assets/uml/`.
+
+### 🔹 Diagrama de Clases (principales clases del sistema)
+![Diagrama de Clases](docs/assets/uml/classes_finlab.png)
+
+### 🔹 Diagrama de Paquetes (dependencias internas del módulo)
+![Diagrama de Paquetes](docs/assets/uml/packages_finlab.png)
+
+---
+
+
 
 ## ✨ Características
 
