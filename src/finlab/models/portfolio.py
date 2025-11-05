@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple, List 
@@ -193,39 +191,111 @@ class Portfolio:
         return {'frequencies': frequencies, 'warnings': warnings}
 
     def _asset_returns_matrix(self) -> pd.DataFrame:
-        """Matriz de retornos log alineados."""
-        if hasattr(self, '_asset_returns_cache') and self._asset_returns_cache is not None:
+        """
+        Devuelve matriz de retornos log diarios (cada columna = activo),
+        alineada por intersección estricta de fechas y sin ningún tipo de ffill
+        en los retornos. Solo se permite ffill limitado en PRECIOS de activos
+        24/7 al mapearlos a días laborables (previous_close), no en bolsa.
+        """
+        if hasattr(self, "_asset_returns_cache") and self._asset_returns_cache is not None:
             return self._asset_returns_cache
-            
-        frames, syms = [], []
+
+        import numpy as np
+        import pandas as pd
+
+        price_series = {}
+
         for sym, c in self.series.items():
-            # Usar el mismo método de alineación que _aligned_returns
-            freq = c.detect_asset_frequency()
-            cs = c.clean(fill_method="ffill")
-            
-            if freq == '24_7':
-                cs_processed = cs.to_business_days(fill_method="previous_close")
+
+            # --- limpieza ligera ---
+            cs = c.clean(fill_method="ffill")   # solo rellena gaps internos reales, no crea días nuevos
+
+            # Detectar frecuencia
+            try:
+                freq = c.detect_asset_frequency()
+            except Exception:
+                freq = "business_days"
+
+            if freq == "24_7":
+                # 1) Convertir a días laborables SOLO por calendario, NO para cálculo de retornos aún
+                cs_proc = cs.to_business_days(fill_method="previous_close")   # rellena SOLO fines de semana
             else:
-                cs_processed = cs.to_business_days(fill_method="none")
-                
-            rr = cs_processed.log_returns().rename(sym)  
+                # 2) Renta variable: NO crear días que no existen → mantener solo los que tenemos
+                df = cs.to_dataframe()[["date", "close"]].copy()
+                df["date"] = pd.to_datetime(df["date"], errors="coerce")
+                df = df.dropna(subset=["date", "close"])
+                df = df.sort_values("date")
+                cs_proc = Candles(symbol=sym, frame=df)
 
+            # Convertir a Series indexed by date (sin duplicados)
+            dfp = cs_proc.to_dataframe()[["date", "close"]].copy()
+            dfp["date"] = pd.to_datetime(dfp["date"], errors="coerce").dt.tz_localize(None)
+            s = pd.Series(
+                pd.to_numeric(dfp["close"], errors="coerce").values,
+                index=pd.DatetimeIndex(dfp["date"]),
+                name=sym
+            ).dropna()
+            s = s[~s.index.duplicated(keep="last")]
 
-            frames.append(rr)
-            syms.append(sym)
-        
-        df = pd.concat(frames, axis=1, join="inner").dropna(how="any")
-        
-        # Fallback si hay poco overlap
-        if df.shape[0] < 10:
-            df = pd.concat(frames, axis=1, join="outer")
-            df = df.ffill().dropna(how="any")
-        
-        if df.shape[0] < 2:
-            raise ValueError("No hay suficiente histórico común para análisis.")
-        
-        self._asset_returns_cache = df
-        return df
+            price_series[sym] = s
+
+            # --- Intersección estricta de calendarios ---
+        common_idx = None
+        for s in price_series.values():
+            common_idx = s.index if common_idx is None else common_idx.intersection(s.index)
+
+        if common_idx is None or len(common_idx) < 30:
+            raise ValueError("Muy poco solape entre activos para calcular retornos fiables.")
+
+        # Construir DF de precios ya alineados sin rellenar
+        prices_list = []
+        cols = []
+        for sym, s in price_series.items():
+            ss = s.reindex(common_idx)
+            if ss.isna().any():
+                # Si aquí hay NaN, es porque la fecha no existía realmente en esa serie → se elimina
+                ss = ss.dropna()
+            prices_list.append(ss)
+            cols.append(sym)
+
+        prices_df = pd.concat(prices_list, axis=1, join="inner")
+        prices_df.columns = cols
+        prices_df = prices_df.sort_index()
+
+        if prices_df.shape[0] < 30:
+            raise ValueError("Histórico común insuficiente tras limpieza final (menos de 30 puntos).")
+
+        # --- Chequeos anti-duplicados/proporcionalidad (en PRECIOS) ---
+        # Normalizamos cada columna a 1 en el primer punto común y medimos RMSD por pares
+        norm_prices = prices_df / prices_df.iloc[0]
+        eps_equal = 1e-12
+        cols = norm_prices.columns.tolist()
+        for i in range(len(cols)):
+            for j in range(i+1, len(cols)):
+                a, b = norm_prices[cols[i]].values, norm_prices[cols[j]].values
+                if a.size == b.size:
+                    rmsd = float(np.sqrt(np.mean((a - b)**2)))
+                    if rmsd < eps_equal:
+                        raise ValueError(f"Series de precios {cols[i]} y {cols[j]} son prácticamente idénticas."
+                                        f" Revisa la descarga/guardado: parecen el mismo activo.")
+
+        # --- Retornos log ---
+        rets = np.log(prices_df / prices_df.shift(1)).dropna(how="any")
+
+        # --- Aviso extra (en RETORNOS) por si pese a lo anterior siguen idénticos ---
+        cols = rets.columns.tolist()
+        for i in range(len(cols)):
+            for j in range(i+1, len(cols)):
+                a, b = rets[cols[i]].values, rets[cols[j]].values
+                if a.size == b.size and a.size > 10:
+                    rmsd = float(np.sqrt(np.mean((a - b)**2)))
+                    if rmsd < 1e-12:
+                        raise ValueError(f"Retornos de {cols[i]} y {cols[j]} son idénticos. "
+                                        f"Probable clonación de datos en origen.")
+
+        self._asset_returns_cache = rets
+        return rets
+
 
     def assets_corr_matrix(self) -> pd.DataFrame:
         return self._asset_returns_matrix().corr()
@@ -1115,3 +1185,4 @@ class Portfolio:
                 "best_sharpe": best_sharpe,
                 "worst_sharpe": worst_sharpe,
             }
+    
