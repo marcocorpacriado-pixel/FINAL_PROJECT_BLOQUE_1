@@ -257,7 +257,7 @@ Alpha Vantage impone límites estrictos; el extractor incorpora sleep para respe
 
 TwelveData/MarketStack toleran mejor el paralelismo moderado.
 
-Con YahooFinance puede haver problemas con la descaraga en paralelismo
+Con YahooFinance puede haver problemas con la descaraga en paralelo
 
 ## ✅ Calidad, Pruebas y Estilo
 Estilo: black, isort, ruff.
